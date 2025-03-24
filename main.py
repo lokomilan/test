@@ -50,8 +50,23 @@ def main():
         'cmd': 'int'
     })
 
+    df_marked_trades = get_dataframe(connection, 'mt4_marked_trades').astype({
+        'positionid': 'int',
+        'type': 'int'
+    })
+    df_blacklisted_trades = df_marked_trades[df_marked_trades['type'] & 2 > 0]
+
+    df_trades = pd.merge(
+        df_trades,
+        df_blacklisted_trades,
+        how='left',
+        left_on='ticket',
+        right_on='positionid',
+        indicator=True
+    ).query('_merge == "left_only"')
+
     get_fast_trade_counts_per_user(df_trades)\
-        .to_csv('output.csv', index=False)
+        .to_csv('stats_by_login.csv', index=False)
 
     connection.close()
 
