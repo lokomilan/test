@@ -34,9 +34,12 @@ def get_fast_trade_counts_by_user(df, limit_seconds=60):
 
 
 def get_paired_order_counts_by_user(df, limit_seconds=30):
-    df_sorted = df.sort_values(['login', 'open_time']).reset_index(drop=True)
-    df_sorted['is_sale'] = df_sorted.cmd
-    df_sorted['is_purchase'] = 1 - df_sorted.cmd
+    df_sorted = df\
+        .assign(
+            is_sale=df.cmd,
+            is_purchase=(1 - df.cmd))\
+        .sort_values(['login', 'open_time'])\
+        .reset_index(drop=True)
     df_last_30s = df_sorted\
         .groupby('login', as_index=False)\
         .rolling(window='{}s'.format(limit_seconds), on='open_time', closed='left')\
