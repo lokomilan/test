@@ -23,9 +23,10 @@ def get_dataframe(conn, table_name, table_schema='hr_vacancies'):
 
 
 def get_fast_trade_counts_by_user(df, limit_seconds=60):
-    df['duration'] = (df.close_time - df.open_time).dt.total_seconds()
-    df['is_fast_trade'] = df.duration.between(0, limit_seconds, inclusive='left')
     return df\
+        .assign(
+            duration=(df.close_time - df.open_time).dt.total_seconds(),
+            is_fast_trade=lambda row: row.duration.between(0, 60, inclusive='left'))\
         .groupby('login', as_index=False)\
         .agg({'is_fast_trade': 'sum'})\
         .rename(columns={'is_fast_trade': 'fast_trades_count'})\
@@ -54,7 +55,7 @@ def get_paired_order_counts_by_user(df, limit_seconds=30):
             'user_purchases_count_window': 'int',
         })
     df_full = pd.concat([df_sorted, df_last_30s], axis=1)
-    df_full["paired_orders_count"] = df_full.apply(
+    df_full['paired_orders_count'] = df_full.apply(
         lambda row: row.user_purchases_count_window
         if row.is_sale == 1
         else row.user_sales_count_window,
@@ -109,5 +110,5 @@ def main():
     connection.close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
