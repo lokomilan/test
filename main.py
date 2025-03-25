@@ -22,13 +22,47 @@ def get_dataframe(conn, table_name, table_schema='hr_vacancies'):
     return pd.DataFrame(table_rows, columns=column_names)
 
 
-def get_fast_trade_counts_per_user(df, limit_seconds=60):
+def get_fast_trade_counts_by_user(df, limit_seconds=60):
     df['duration'] = (df.close_time - df.open_time).dt.total_seconds()
     df['is_fast_trade'] = df.duration.between(0, limit_seconds, inclusive='left')
     return df\
         .groupby('login', as_index=False)\
         .agg({'is_fast_trade': 'sum'})\
         .rename(columns={'is_fast_trade': 'fast_trades_count'})\
+        .sort_values('login')
+
+
+def get_paired_order_counts_by_user(df, limit_seconds=30):
+    df_sorted = df.sort_values(['login', 'open_time']).reset_index(drop=True)
+    df_sorted['is_sale'] = df_sorted.cmd
+    df_sorted['is_purchase'] = 1 - df_sorted.cmd
+    df_last_30s = df_sorted\
+        .groupby('login', as_index=False)\
+        .rolling(window='{}s'.format(limit_seconds), on='open_time', closed='left')\
+        .agg({
+            'is_sale': 'sum',
+            'is_purchase': 'sum'
+        })\
+        .fillna(0)\
+        .reset_index(drop=True)\
+        .rename(columns={
+            'is_sale': 'user_sales_count_window',
+            'is_purchase': 'user_purchases_count_window'
+        })\
+        .astype({
+            'user_sales_count_window': 'int',
+            'user_purchases_count_window': 'int',
+        })
+    df_full = pd.concat([df_sorted, df_last_30s], axis=1)
+    df_full["paired_orders_count"] = df_full.apply(
+        lambda row: row.user_purchases_count_window
+        if row.is_sale == 1
+        else row.user_sales_count_window,
+        axis=1,
+    )
+    return df_full\
+        .groupby('login', as_index=False)\
+        .agg({'paired_orders_count': 'sum'})\
         .sort_values('login')
 
 
@@ -65,8 +99,12 @@ def main():
         indicator=True
     ).query('_merge == "left_only"')
 
-    get_fast_trade_counts_per_user(df_trades)\
-        .to_csv('stats_by_login.csv', index=False)
+    pd.merge(
+        get_fast_trade_counts_by_user(df_trades),
+        get_paired_order_counts_by_user(df_trades),
+        on='login'
+    ).sort_values('login')\
+        .to_csv('metrics_by_login.csv', index=False)
 
     connection.close()
 
