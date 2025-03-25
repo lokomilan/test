@@ -67,6 +67,18 @@ def get_paired_order_counts_by_user(df, limit_seconds=30):
         .sort_values('login')
 
 
+def get_user_pairs_with_connected_orders(df, orders_threshold=10):
+    df['open_time_30s'] = df.open_time.dt.floor('30s')
+    return df\
+        .merge(df, on=['open_time_30s', 'symbol'])\
+        .query('login_x < login_y and cmd_x + cmd_y == 1')\
+        .groupby(['login_x', 'login_y'], as_index=False)\
+        .agg({'ticket_x': 'count'})\
+        .query('ticket_x > {}'.format(orders_threshold))\
+        .sort_values(['login_x', 'login_y'])\
+        .get(['login_x', 'login_y'])
+
+
 def main():
 
     connection = psycopg2.connect(
@@ -106,6 +118,9 @@ def main():
         on='login'
     ).sort_values('login')\
         .to_csv('metrics_by_login.csv', index=False)
+
+    get_user_pairs_with_connected_orders(df_trades)\
+        .to_csv('user_pairs.csv', index=False)
 
     connection.close()
 
