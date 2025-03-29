@@ -142,7 +142,7 @@ def main():
     df_deals_opens = df_deals\
         .query('entry == 1')\
         .rename(columns={
-            'position_id': 'ticket',
+            'positionid': 'ticket',
             'time': 'open_time',
             'action': 'cmd'
         })
