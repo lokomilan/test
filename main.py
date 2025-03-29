@@ -40,8 +40,7 @@ def get_fast_trade_counts_by_user(df, limit_seconds=60):
             is_fast_trade=lambda row: row.duration.between(0, 60, inclusive='left'))\
         .groupby('login', as_index=False)\
         .agg({'is_fast_trade': 'sum'})\
-        .rename(columns={'is_fast_trade': 'fast_trades_count'})\
-        .sort_values('login')
+        .rename(columns={'is_fast_trade': 'fast_trades_count'})
 
 
 def get_paired_order_counts_by_user(df, limit_seconds=30):
@@ -77,8 +76,7 @@ def get_paired_order_counts_by_user(df, limit_seconds=30):
     )
     return df_full\
         .groupby('login', as_index=False)\
-        .agg({'paired_orders_count': 'sum'})\
-        .sort_values('login')
+        .agg({'paired_orders_count': 'sum'})
 
 
 def get_user_pairs_with_connected_orders(df, orders_threshold=10):
@@ -89,7 +87,6 @@ def get_user_pairs_with_connected_orders(df, orders_threshold=10):
         .groupby(['login_x', 'login_y'], as_index=False)\
         .agg({'ticket_x': 'count'})\
         .query('ticket_x > {}'.format(orders_threshold))\
-        .sort_values(['login_x', 'login_y'])\
         .get(['login_x', 'login_y'])
 
 
@@ -130,14 +127,42 @@ def main():
     })
     df_deals = filter_dataframe(df_deals, df_marked_deals)
 
+    df_deals_agg = df_deals\
+        .assign(
+            open_time=lambda x: x['time'].where(x['entry'] == 0),
+            close_time=lambda x: x['time'].where(x['entry'] == 1)
+        )\
+        .groupby(['positionid', 'login'], as_index=False)\
+        .agg({
+            'open_time': 'min',
+            'close_time': 'max'
+        })\
+        .dropna()
+
+    df_deals_opens = df_deals\
+        .query('entry == 1')\
+        .rename(columns={
+            'position_id': 'ticket',
+            'time': 'open_time',
+            'action': 'cmd'
+        })
+
     pd.merge(
-        get_fast_trade_counts_by_user(df_trades),
-        get_paired_order_counts_by_user(df_trades),
+        pd.concat([
+            get_fast_trade_counts_by_user(df_trades),
+            get_fast_trade_counts_by_user(df_deals_agg)
+        ]),
+        pd.concat([
+            get_paired_order_counts_by_user(df_trades),
+            get_paired_order_counts_by_user(df_deals_opens)
+        ]),
         on='login'
     ).sort_values('login')\
         .to_csv('metrics_by_login.csv', index=False)
 
-    get_user_pairs_with_connected_orders(df_trades)\
+    get_user_pairs_with_connected_orders(
+        pd.concat([df_trades, df_deals_opens])
+    ).sort_values(['login_x', 'login_y'])\
         .to_csv('user_pairs.csv', index=False)
 
     connection.close()
