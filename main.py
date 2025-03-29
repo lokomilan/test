@@ -22,6 +22,17 @@ def get_dataframe(conn, table_name, table_schema='hr_vacancies'):
     return pd.DataFrame(table_rows, columns=column_names)
 
 
+def filter_dataframe(df, df_marked, left_key='positionid', right_key='positionid'):
+    return pd.merge(
+        df,
+        df_marked[df_marked['type'] & 2 > 0],
+        how='left',
+        left_on=left_key,
+        right_on=right_key,
+        indicator=True
+    ).query('_merge == "left_only"')[df.columns]
+
+
 def get_fast_trade_counts_by_user(df, limit_seconds=60):
     return df\
         .assign(
@@ -99,21 +110,25 @@ def main():
         'close_time': 'datetime64[ns]',
         'cmd': 'int'
     })
-
     df_marked_trades = get_dataframe(connection, 'mt4_marked_trades').astype({
         'positionid': 'int',
         'type': 'int'
     })
-    df_blacklisted_trades = df_marked_trades[df_marked_trades['type'] & 2 > 0]
+    df_trades = filter_dataframe(df_trades, df_marked_trades, left_key='ticket')
 
-    df_trades = pd.merge(
-        df_trades,
-        df_blacklisted_trades,
-        how='left',
-        left_on='ticket',
-        right_on='positionid',
-        indicator=True
-    ).query('_merge == "left_only"')
+    df_deals = get_dataframe(connection, 'mt5_deals').astype({
+        'deal': 'int',
+        'positionid': 'int',
+        'login': 'int',
+        'time': 'datetime64[ns]',
+        'action': 'int',
+        'entry': 'float'
+    })
+    df_marked_deals = get_dataframe(connection, 'mt5_marked_trades').astype({
+        'positionid': 'int',
+        'type': 'int'
+    })
+    df_deals = filter_dataframe(df_deals, df_marked_deals)
 
     pd.merge(
         get_fast_trade_counts_by_user(df_trades),
